@@ -9,9 +9,9 @@ from .mute import MuteController
 
 
 # 接続先URLはマイクIDを含む形にする（サーバ仕様に合わせる）
-# サーバーPCのIPアドレスを指定（例: 192.168.1.10）。環境変数 SERVER_IP があればそれを優先。
-# 同一PCでサーバーを起動している場合は 127.0.0.1 を使用します。
-SERVER_IP = os.getenv("SERVER_IP", "127.0.0.1")
+# サーバーPCのIPアドレスを指定。環境変数 SERVER_IP があればそれを優先。
+# 既定は 192.168.40.245。同一PCで検証する場合は SERVER_IP=127.0.0.1 を指定してください。
+SERVER_IP = os.getenv("SERVER_IP", "192.168.40.245")
 SERVER_WS_SELF = os.getenv("SERVER_WS_SELF", f"ws://{SERVER_IP}:8000/ws/self")
 SERVER_WS_OTHER = os.getenv("SERVER_WS_OTHER", f"ws://{SERVER_IP}:8000/ws/other")
 # 再生用はどちらかのIDに紐づける（ここでは self）
