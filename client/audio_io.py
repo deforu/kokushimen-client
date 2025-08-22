@@ -56,21 +56,77 @@ class SoundDeviceSource:
     代替として pyalsaaudio（ALSA=Linuxの音声仕組みに直接アクセスするライブラリ）の
     採用も検討可能。ここでは import を遅延し、実際にこのクラスを使ったときだけ
     依存するようにしています（=不要な環境ではインストール不要）。
+
+    デバイス指定（Windowsの内蔵マイクなどを選ぶ）:
+    - 環境変数 `SD_INPUT_DEVICE` を設定する。
+      - 数値を指定: そのインデックスのデバイスを使用（例: `SD_INPUT_DEVICE=1`）。
+      - 文字列を指定: デバイス名の部分一致で最初に見つかった入力デバイスを使用
+        （例: `SD_INPUT_DEVICE=Microphone` や `SD_INPUT_DEVICE=Realtek`）。
+    - 一覧表示: `SD_LIST_DEVICES=1` を設定すると、起動時にデバイス一覧を表示。
     """
 
-    def __init__(self, device: Optional[int] = None):
+    def __init__(self, device: Optional[int | str] = None):
+        import os
         import sounddevice as sd  # type: ignore
 
         self.sd = sd
-        self.device = device
+        env_device = os.getenv("SD_INPUT_DEVICE")
+        self.device = device if device is not None else env_device
+        # 文字列デバイス指定（名前の部分一致）をインデックスへ解決
+        if isinstance(self.device, str):
+            name_key = self.device
+            name_sub = name_key.casefold()
+            exact = os.getenv("SD_MATCH_EXACT", "1") == "1"
+            try:
+                # 数値として解釈できるならそのまま使う
+                self.device = int(self.device)
+            except ValueError:
+                try:
+                    devices = sd.query_devices()
+                except Exception:
+                    devices = []
+                # 入力チャンネルがあるものだけから部分一致検索
+                match_idx = None
+                for idx, info in enumerate(devices):
+                    try:
+                        if info.get("max_input_channels", 0) > 0:
+                            name = str(info.get("name", ""))
+                            if exact:
+                                if name == name_key:
+                                    match_idx = idx
+                                    break
+                            else:
+                                if name_sub in name.casefold():
+                                    match_idx = idx
+                                    break
+                    except Exception:
+                        continue
+                self.device = match_idx  # 見つからなければ None のまま
+
+        # 任意: デバイス一覧の表示
+        if os.getenv("SD_LIST_DEVICES") == "1":
+            try:
+                print("[sounddevice] devices:")
+                for idx, info in enumerate(self.sd.query_devices()):
+                    print(f"  [{idx}] in={info.get('max_input_channels',0)} out={info.get('max_output_channels',0)} name={info.get('name')}")
+                print(f"[sounddevice] selected input device: {self.device}")
+            except Exception:
+                pass
+
+        # 指定があって解決できなかった場合は、既定デバイスへフォールバックせずエラーにする
+        if (device is not None or env_device is not None) and self.device is None:
+            raise RuntimeError(
+                "SD_INPUT_DEVICE の指定に一致する入力デバイスが見つかりません（既定デバイスへはフォールバックしません）。"
+            )
+
         self._queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=50)
         self._stream = None
 
     async def __aenter__(self):
-        def callback(indata, frames, time, status):  # indata: NumPy 配列（数の表を高速に扱うための型）
+        def callback(indata, frames, time, status):  # RawInputStream: indata は bytes ライク
             try:
                 # そのまま bytes へ（演算なし。bytes=生のバイト列データ）
-                self._queue.put_nowait(indata.tobytes())
+                self._queue.put_nowait(bytes(indata))
             except Exception:
                 # キュー（順番待ちの箱）が満杯のときは捨てる（オーバーフロー対策）
                 pass
@@ -102,20 +158,26 @@ def rms_int16(frame: bytes) -> float:
     """NumPy を使わずに RMS を計算（int16 PCM）。
 
     RMS（平均二乗平方根）: 音の大きさを表す代表的な指標。値が大きいほど音量が大きい。
-    PCM: 音声の生データ表現（時間ごとの振幅をそのまま数値化）。
-    int16: 16ビットの符号付き整数（-32768〜32767）。
+    実環境のマイクでは直流成分（DCオフセット）が乗ることがあるため、
+    平均値を差し引いた分散から標準偏差を求める方法に変更（DCの影響を低減）。
     """
-    # frame は 16bit little-endian
     if not frame:
         return 0.0
-    # 2バイトずつ符号付き整数に解釈（little-endian=下位バイトが先に来る並び）
-    total = 0
     count = len(frame) // 2
+    if count <= 0:
+        return 0.0
+    # 1パスで合計と二乗和を集計
+    sum_s = 0
+    sum_sq = 0
     for i in range(0, len(frame), 2):
         s = int.from_bytes(frame[i : i + 2], byteorder="little", signed=True)
-        total += s * s
-    mean_square = total / max(1, count)
-    return math.sqrt(mean_square) / 32768.0
+        sum_s += s
+        sum_sq += s * s
+    mean = sum_s / count
+    # 分散 = E[x^2] - (E[x])^2
+    mean_square = sum_sq / count
+    var = max(0.0, mean_square - mean * mean)
+    return math.sqrt(var) / 32768.0
 
 
 class SilenceDetector:
@@ -129,9 +191,11 @@ class SilenceDetector:
         self.threshold = threshold
         self.min_silence_ms = min_silence_ms
         self._sil_ms = 0
+        self._last_rms = 0.0
 
     def update(self, frame: bytes) -> bool:
         r = rms_int16(frame)
+        self._last_rms = r
         if r < self.threshold:
             self._sil_ms += FRAME_MS
         else:

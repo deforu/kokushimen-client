@@ -16,13 +16,64 @@ class SoundDevicePlayer:
 
     import（読み込み）を遅延し、実際に使うときだけライブラリに依存する作り。
     こうすることで、不要な環境では追加インストールが要らず、起動も軽くできる。
+
+    出力デバイス指定:
+    - 環境変数 `SD_OUTPUT_DEVICE` で指定可能（数値インデックス or 名称の部分一致）。
+    - `SD_LIST_DEVICES=1` で入出力デバイス一覧を表示。
     """
 
-    def __init__(self, device: Optional[int] = None):
+    def __init__(self, device: Optional[int | str] = None):
+        import os
         import sounddevice as sd  # type: ignore
 
         self.sd = sd
-        self.device = device
+        env_device = os.getenv("SD_OUTPUT_DEVICE")
+        self.device: Optional[int | str] = device if device is not None else env_device
+
+        # 文字列指定なら出力デバイスのインデックスに解決
+        if isinstance(self.device, str):
+            name_key = self.device
+            name_sub = name_key.casefold()
+            exact = os.getenv("SD_MATCH_EXACT", "1") == "1"
+            try:
+                self.device = int(self.device)
+            except ValueError:
+                try:
+                    devices = self.sd.query_devices()
+                except Exception:
+                    devices = []
+                match_idx = None
+                for idx, info in enumerate(devices):
+                    try:
+                        if info.get("max_output_channels", 0) > 0:
+                            name = str(info.get("name", ""))
+                            if exact:
+                                if name == name_key:
+                                    match_idx = idx
+                                    break
+                            else:
+                                if name_sub in name.casefold():
+                                    match_idx = idx
+                                    break
+                    except Exception:
+                        continue
+                self.device = match_idx
+
+        if os.getenv("SD_LIST_DEVICES") == "1":
+            try:
+                print("[sounddevice] devices:")
+                for idx, info in enumerate(self.sd.query_devices()):
+                    print(f"  [{idx}] in={info.get('max_input_channels',0)} out={info.get('max_output_channels',0)} name={info.get('name')}")
+                print(f"[sounddevice] selected output device: {self.device}")
+            except Exception:
+                pass
+
+        # 出力デバイスが明示指定されているのに解決不可の場合はフォールバックせずエラー
+        if (device is not None or env_device is not None) and self.device is None:
+            raise RuntimeError(
+                "SD_OUTPUT_DEVICE の指定に一致する出力デバイスが見つかりません（既定デバイスへはフォールバックしません）。"
+            )
+
         self._stream = None
 
     async def __aenter__(self):
