@@ -13,8 +13,12 @@ AUTH_TOKEN = os.getenv("AUTH_TOKEN", "dev-token")
 
 
 async def main():
-    # テスト用: トーンジェネレータを 2 系統に流す
-    input_backend = os.getenv("INPUT_BACKEND", "tone")  # tone|sounddevice|alsa
+    # テスト用: トーンジェネレータ（一定の周波数で鳴る音）を 2 系統に流す
+    # 入力方式は環境変数 INPUT_BACKEND で選択: "tone"|"sounddevice"|"alsa"
+    # - tone: 実マイクなし。プログラム内で作った音を使う（疎通確認に最適）
+    # - sounddevice: PCのマイク入力（sounddevice ライブラリが必要）
+    # - alsa: LinuxのALSA経由の入力（軽量）
+    input_backend = os.getenv("INPUT_BACKEND", "tone")  # 既定は tone
     if input_backend == "sounddevice":
         sd_self = SoundDeviceSource()
         sd_other = SoundDeviceSource()
@@ -47,12 +51,12 @@ async def main():
             async for f in gen_other.frames():
                 yield f
 
-    # プレイヤ（sounddevice が使えない環境では NullPlayer）
+    # プレイヤ（再生側）。sounddevice が使えない環境では NullPlayer（待つだけ）を使用。
     use_sounddevice = os.getenv("USE_SD", "0") == "1"
     mute = MuteController()
     if use_sounddevice:
         async with SoundDevicePlayer() as player:
-            # jitter で20ms整流
+            # jitter（到着のバラツキ）を緩和するため、20ms単位に整える
             jot = JitteredOutput(player._stream.write)
             async with jot:
                 async def on_pcm_chunk(chunk: bytes):
@@ -66,7 +70,7 @@ async def main():
                 await asyncio.gather(*tasks)
     else:
         player = NullPlayer()
-        # jitterはそのままsleepするだけ（動作確認用）
+        # jitter対策はなし。受け取った間隔のまま sleep するだけ（動作確認用）
         async def on_pcm_chunk(chunk: bytes):
             await player.play(chunk)
 

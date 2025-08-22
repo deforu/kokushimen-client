@@ -32,7 +32,8 @@ async def _broadcast_tts_mock():
         return
     pcm = _pcm_s16le_sine(1.0)
     frame_bytes = 6400  # 200ms
-    # 事前に final_asr を送出（テキストはダミー）
+    # 事前に final_asr を送出（テキストはダミー）。
+    # ASR=Automatic Speech Recognition（音声認識）。ここでは擬似的な認識結果を送る。
     asr_msg = json.dumps({"type": "final_asr", "text": "(mock) 了解しました。", "utter_id": "mock-utt"})
     for ws in list(PLAYBACK_CLIENTS):
         try:
@@ -51,7 +52,7 @@ async def _broadcast_tts_mock():
             except Exception:
                 pass
         await asyncio.sleep(0.2)
-    # 終了通知
+    # 終了通知（TTS が終わったことを知らせる）
     done_msg = json.dumps({"type": "tts_done", "utter_id": "mock-utt"})
     for ws in list(PLAYBACK_CLIENTS):
         try:
@@ -62,7 +63,7 @@ async def _broadcast_tts_mock():
 
 @app.websocket("/ws")
 async def ws_handler(websocket: WebSocket):
-    # 簡易認証（存在チェックのみ）
+    # 簡易認証（存在チェックのみ）。Bearer トークンの形かどうかだけ確認する。
     auth = websocket.headers.get("authorization")
     if not auth or not auth.lower().startswith("bearer "):
         await websocket.close(code=4401)
@@ -88,16 +89,16 @@ async def ws_handler(websocket: WebSocket):
                     stream_id = data.get("stream_id")
                     if role == "playback":
                         PLAYBACK_CLIENTS.add(websocket)
-                    # 簡易応答
+                    # 簡易応答（受け付けたことを返す）
                     await websocket.send_text(json.dumps({"type": "hello", "accepted": True, "role": role}))
                 elif msg_type == "stop":
-                    # 区切り受信→擬似ASR/TTSをプレイバックへブロードキャスト
+                    # 区切り受信→擬似ASR/TTSをプレイバックへブロードキャスト（まとめて送る）
                     await _broadcast_tts_mock()
                 else:
-                    # no-op
+                    # 何もしない（no-op: 特に処理なしの意）
                     pass
             elif "bytes" in message:
-                # 音声バイナリ（20ms=640 bytes）を受信。モックでは使用しない。
+                # 音声バイナリ（20ms=640 bytes）を受信。モック（動作確認用の簡易サーバ）では使用しない。
                 _ = message["bytes"]
             else:
                 # その他は無視
@@ -112,4 +113,3 @@ async def ws_handler(websocket: WebSocket):
 @app.get("/")
 async def index():
     return {"status": "ok", "ws": "/ws"}
-

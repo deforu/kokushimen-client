@@ -28,19 +28,19 @@ async def sender_task(
                     "spec": {"codec": "PCM_S16LE", "rate": 16000, "channels": 1, "frame_ms": 20},
                 }
                 await ws.send(json.dumps(hello))
-                vad = SilenceDetector() if use_vad else None
+                vad = SilenceDetector() if use_vad else None  # VAD（Voice Activity Detection=発話検出）用の無音判定
                 
                 async for frame in frame_iter():
                     if not isinstance(frame, (bytes, bytearray)):
                         continue
-                    # ミュート中はキューを捨てて送信しない（入力バッファのクリアに相当）
+                    # ミュート中はキューを捨てて送信しない（入力バッファのクリア=溜まった音を破棄）
                     if mute and mute.is_muted():
                         if vad:
                             vad.reset()
                         continue
-                    # バイナリ送信（20ms）
+                    # バイナリ送信（20ms=640バイトの生データ）
                     await ws.send(frame)
-                    # 無音>=400ms で stop 通知
+                    # 無音>=400ms で stop 通知（サーバに「一区切り」と知らせる制御メッセージ）
                     if vad and vad.update(frame):
                         await ws.send(json.dumps({"type": "stop"}))
                         vad._sil_ms = 0
@@ -58,12 +58,12 @@ async def playback_task(uri: str, token: str, on_pcm_chunk: Callable[[bytes], as
     while True:
         try:
             async with websockets.connect(uri, extra_headers=headers, ping_interval=30, max_size=None) as ws:
-                await ws.send(json.dumps({"type": "hello", "role": "playback"}))
+                await ws.send(json.dumps({"type": "hello", "role": "playback"}))  # 再生専用として接続
                 in_tts = False
                 while True:
                     msg = await ws.recv()
                     if isinstance(msg, (bytes, bytearray)):
-                        # 最初のバイト受信でミュート開始
+                        # 最初のバイト受信でミュート開始（TTS=Text-To-Speech=合成音声の再生が始まったとみなす）
                         if mute and not in_tts:
                             mute.set_muted(True)
                             in_tts = True
@@ -74,7 +74,7 @@ async def playback_task(uri: str, token: str, on_pcm_chunk: Callable[[bytes], as
                             data = json.loads(msg)
                         except Exception:
                             data = {}
-                        # tts_done でミュート解除
+                        # tts_done（合成音声の終了通知）でミュート解除
                         if data.get("type") == "tts_done":
                             if mute:
                                 mute.set_muted(False)
