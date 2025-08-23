@@ -74,5 +74,10 @@ ehthumbs.db
 Icon?
 
 # other
-開発の手引書.md
+gclient_final_modifications.md
+kokushimen-server
 client_final_modifications.md
+current_issue_summary.md
+log.txt
+client.venv
+server_integration_issue.md

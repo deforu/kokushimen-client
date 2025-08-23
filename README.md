@@ -126,9 +126,8 @@ python -m client.run
 - webrtcvad による VAD 置換（低負荷）
 - 再生中ミュート・録音バッファクリアの制御線（実装済み・要調整）
 - ジッタバッファ（200ms受信→20ms出力）（実装済み・要調整）
-- 認証（JWT 検証方式の確定: HS256/RS256）
+ - 認証（JWT 検証方式の確定: HS256/RS256）
  
-
 ## Raspberry Pi 5 セットアップ（Raspberry Pi OS 64-bit/Bookworm）
 
 最小構成（疎通確認）→ 実機動作（再生/録音）へ段階的に進めます。
