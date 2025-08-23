@@ -85,22 +85,27 @@ class SoundDeviceSource:
                     devices = sd.query_devices()
                 except Exception:
                     devices = []
-                # 入力チャンネルがあるものだけから部分一致検索
+                # まずは厳密一致、なければ部分一致でフォールバック
                 match_idx = None
                 for idx, info in enumerate(devices):
                     try:
                         if info.get("max_input_channels", 0) > 0:
                             name = str(info.get("name", ""))
-                            if exact:
-                                if name == name_key:
-                                    match_idx = idx
-                                    break
-                            else:
+                            if name == name_key:
+                                match_idx = idx
+                                break
+                    except Exception:
+                        continue
+                if match_idx is None:
+                    for idx, info in enumerate(devices):
+                        try:
+                            if info.get("max_input_channels", 0) > 0:
+                                name = str(info.get("name", ""))
                                 if name_sub in name.casefold():
                                     match_idx = idx
                                     break
-                    except Exception:
-                        continue
+                        except Exception:
+                            continue
                 self.device = match_idx  # 見つからなければ None のまま
 
         # 任意: デバイス一覧の表示

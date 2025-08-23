@@ -23,7 +23,11 @@ async def sender_task(
         try:
             # websockets 15.x は extra_headers ではなく additional_headers を使用
             async with websockets.connect(uri, additional_headers=headers, ping_interval=30) as ws:
-                # helloメッセージは仕様にないため送らない
+                # サーバ仕様に合わせて hello を送る（role=sender）
+                try:
+                    await ws.send(json.dumps({"type": "hello", "role": "sender", "stream_id": stream_id}))
+                except Exception:
+                    pass
                 # VAD感度は環境変数で調整可能: VAD_THRESHOLD(既定0.02), VAD_MIN_SIL_MS(既定400)
                 if use_vad:
                     try:
@@ -179,7 +183,11 @@ async def playback_task(uri: str, token: str, on_pcm_chunk: Callable[[bytes], as
         try:
             # websockets 15.x は extra_headers ではなく additional_headers を使用
             async with websockets.connect(uri, additional_headers=headers, ping_interval=30, max_size=None) as ws:
-                # helloメッセージは仕様にないため送らない
+                # サーバ仕様に合わせて hello を送る（role=playback）
+                try:
+                    await ws.send(json.dumps({"type": "hello", "role": "playback"}))
+                except Exception:
+                    pass
                 in_tts = False
                 while True:
                     msg = await ws.recv()
