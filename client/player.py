@@ -34,7 +34,6 @@ class SoundDevicePlayer:
         if isinstance(self.device, str):
             name_key = self.device
             name_sub = name_key.casefold()
-            exact = os.getenv("SD_MATCH_EXACT", "1") == "1"
             try:
                 self.device = int(self.device)
             except ValueError:
@@ -43,20 +42,27 @@ class SoundDevicePlayer:
                 except Exception:
                     devices = []
                 match_idx = None
+                # 厳密一致優先
                 for idx, info in enumerate(devices):
                     try:
                         if info.get("max_output_channels", 0) > 0:
                             name = str(info.get("name", ""))
-                            if exact:
-                                if name == name_key:
-                                    match_idx = idx
-                                    break
-                            else:
+                            if name == name_key:
+                                match_idx = idx
+                                break
+                    except Exception:
+                        continue
+                # 見つからなければ部分一致
+                if match_idx is None:
+                    for idx, info in enumerate(devices):
+                        try:
+                            if info.get("max_output_channels", 0) > 0:
+                                name = str(info.get("name", ""))
                                 if name_sub in name.casefold():
                                     match_idx = idx
                                     break
-                    except Exception:
-                        continue
+                        except Exception:
+                            continue
                 self.device = match_idx
 
         if os.getenv("SD_LIST_DEVICES") == "1":
