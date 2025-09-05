@@ -1,0 +1,5 @@
+websockets>=15.0,<16.0
+# Optional for playback/recording (install as needed):
+# numpy>=1.26,<3.0
+# sounddevice>=0.4.6,<0.5
+# pyalsaaudio>=0.11.0,<0.13
