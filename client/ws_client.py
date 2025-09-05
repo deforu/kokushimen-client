@@ -96,7 +96,11 @@ async def playback_task(uri: str, token: str, on_pcm_chunk: Callable[[bytes], as
         try:
             # websockets 15.x は extra_headers ではなく additional_headers を使用
             async with websockets.connect(uri, additional_headers=headers, ping_interval=30, max_size=None) as ws:
-                # helloメッセージは仕様にないため送らない
+                # サーバ仕様に合わせて hello を送る（role=playback）
+                try:
+                    await ws.send(json.dumps({"type": "hello", "role": "playback"}))
+                except Exception:
+                    pass
                 in_tts = False
                 while True:
                     msg = await ws.recv()
