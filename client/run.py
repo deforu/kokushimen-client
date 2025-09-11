@@ -78,8 +78,9 @@ async def main():
     # 実行するタスクのリスト
     tasks = []
     # 接続先URLを動的に生成
-    ws_uri_self = f"{SERVER_BASE_URL}/self"
-    ws_uri_other = f"{SERVER_BASE_URL}/other"
+    ws_uri_self_sender = f"{SERVER_BASE_URL}/self?role=sender"
+    ws_uri_self_playback = f"{SERVER_BASE_URL}/self?role=playback"
+    ws_uri_other_sender = f"{SERVER_BASE_URL}/other?role=sender"
 
     # メインの処理（再生デバイスの有無で分岐）
     if use_sounddevice:
@@ -92,11 +93,11 @@ async def main():
                         await jot.on_chunk(chunk)
 
                     # タスクを定義
-                    tasks.append(ws_client.sender_task(ws_uri_self, AUTH_TOKEN, "self", frames_self, mute=mute))
-                    tasks.append(ws_client.playback_task(ws_uri_self, AUTH_TOKEN, on_pcm_chunk, mute=mute))
+                    tasks.append(ws_client.sender_task(ws_uri_self_sender, AUTH_TOKEN, "self", frames_self, mute=mute))
+                    tasks.append(ws_client.playback_task(ws_uri_self_playback, AUTH_TOKEN, on_pcm_chunk, mute=mute))
                     # 2つ目のマイクが有効なら送信タスクを追加
                     if (input_backend == "sounddevice" and sd_other) or input_backend != "sounddevice":
-                        tasks.append(ws_client.sender_task(ws_uri_other, AUTH_TOKEN, "other", frames_other, mute=mute))
+                        tasks.append(ws_client.sender_task(ws_uri_other_sender, AUTH_TOKEN, "other", frames_other, mute=mute))
                     
                     await asyncio.gather(*tasks)
         except Exception as e:
