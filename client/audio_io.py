@@ -3,7 +3,7 @@ import math
 from typing import AsyncIterator, Optional
 
 
-RATE = 16000
+RATE = 24000
 CHANNELS = 1
 SAMPLE_WIDTH = 2  # 1サンプルのバイト数（int16=16ビット整数のこと）
 FRAME_MS = 20
