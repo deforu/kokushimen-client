@@ -112,8 +112,10 @@ class JitteredOutput:
     ラッパ: ある機能を包んで扱いやすくする小さな部品。
     """
 
-    def __init__(self, writer: Callable[[bytes], None], prebuffer_ms: int = 200, max_buffer_ms: int = 600):
-        self.jb = JitterBuffer(prebuffer_ms=prebuffer_ms, max_buffer_ms=max_buffer_ms)
+    # ★★★ 修正箇所 (1) ★★★
+    # prebuffer_ms の引数を削除し、JitterBuffer側の設定に任せる
+    def __init__(self, writer: Callable[[bytes], None]):
+        self.jb = JitterBuffer()
         self._writer_sync = writer
         self._task = None
 
@@ -135,5 +137,10 @@ class JitteredOutput:
                 pass
             self._task = None
 
+    # ★★★ 修正箇所 (2) ★★★
     async def on_chunk(self, chunk: bytes):
+        # チャンクをフレームに分割してキューに追加
         await self.jb.push_chunk(chunk)
+        
+        # 「このチャンクはこれで全部です」とJitterBufferに通知する
+        await self.jb.signal_end_of_chunk()
