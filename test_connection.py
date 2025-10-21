@@ -6,6 +6,23 @@
 import asyncio
 import websockets
 import os
+from pathlib import Path
+
+# .envファイルから環境変数を読み込む
+def load_env():
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        print(f"📄 .envファイルを読み込み中: {env_path}")
+        with open(env_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    os.environ.setdefault(key.strip(), value.strip())
+    else:
+        print(f"⚠️  .envファイルが見つかりません: {env_path}")
+
+load_env()
 
 SERVER_IP = os.getenv("SERVER_IP", "220.158.21.165")
 SERVER_PORT = os.getenv("SERVER_PORT", "8000")
