@@ -28,6 +28,13 @@ SERVER_IP = os.getenv("SERVER_IP", "220.158.21.165")
 SERVER_PORT = os.getenv("SERVER_PORT", "8000")
 AUTH_TOKEN = os.getenv("SERVER_AUTH_TOKEN", "dev-token")
 
+# デバッグ: 環境変数の値を表示
+print(f"🔍 読み込まれた環境変数:")
+print(f"   SERVER_IP: {SERVER_IP}")
+print(f"   SERVER_PORT: {SERVER_PORT}")
+print(f"   AUTH_TOKEN: {AUTH_TOKEN}")
+print()
+
 async def test_connection():
     uri = f"ws://{SERVER_IP}:{SERVER_PORT}/ws/test"
     headers = {"Authorization": f"Bearer {AUTH_TOKEN}"}
