@@ -1,12 +1,26 @@
 import asyncio
 import os
 from typing import Callable
+from pathlib import Path
 
 from .audio_io import ToneGeneratorSource, AlsaaudioSource, SoundDeviceSource
 from .player import NullPlayer, SoundDevicePlayer, JitteredOutput
 from . import ws_client
 from .mute import MuteController
 
+
+# .envファイルから環境変数を読み込む
+def load_env():
+    env_path = Path(__file__).parent.parent / ".env"
+    if env_path.exists():
+        with open(env_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    os.environ.setdefault(key.strip(), value.strip())
+
+load_env()
 
 # サーバーPCのIPアドレスやポートを指定。環境変数があればそれを優先。
 SERVER_IP = os.getenv("SERVER_IP", "127.0.0.1")
@@ -110,11 +124,11 @@ async def main():
             await player.play(chunk)
 
         # タスクを定義
-        tasks.append(ws_client.sender_task(ws_uri_self, AUTH_TOKEN, "self", frames_self, mute=mute))
-        tasks.append(ws_client.playback_task(ws_uri_self, AUTH_TOKEN, on_pcm_chunk, mute=mute))
+        tasks.append(ws_client.sender_task(ws_uri_self_sender, AUTH_TOKEN, "self", frames_self, mute=mute))
+        tasks.append(ws_client.playback_task(ws_uri_self_playback, AUTH_TOKEN, on_pcm_chunk, mute=mute))
         # 2つ目のマイクが有効なら送信タスクを追加
         if (input_backend == "sounddevice" and sd_other) or input_backend != "sounddevice":
-            tasks.append(ws_client.sender_task(ws_uri_other, AUTH_TOKEN, "other", frames_other, mute=mute))
+            tasks.append(ws_client.sender_task(ws_uri_other_sender, AUTH_TOKEN, "other", frames_other, mute=mute))
 
         await asyncio.gather(*tasks)
 
