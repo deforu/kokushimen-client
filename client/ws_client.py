@@ -7,6 +7,7 @@ import os
 
 from .audio_io import FRAME_BYTES, FRAME_MS, SilenceDetector, rms_int16
 from .mute import MuteController
+from .emotion_led import EmotionLED
 
 
 async def sender_task(
@@ -89,10 +90,11 @@ async def playback_task(
     uri: str, 
     token: str, 
     on_pcm_chunk: Callable[[bytes], asyncio.Future], 
-    mute: Optional[MuteController] = None
+    mute: Optional[MuteController] = None,
+    led: Optional[EmotionLED] = None
 ):
     """
-    (★ この関数は修正済みです)
+    再生タスク（LED制御対応版）
     """
     headers = {"Authorization": f"Bearer {token}"}
     backoff = 0.5
@@ -131,7 +133,7 @@ async def playback_task(
                             print(f"\n💬 [Gemini 応答]: {ai_text}\n")
                         
                         elif msg_type == "emotion":
-                            # ★NEW: 感情分析結果を表示
+                            # ★NEW: 感情分析結果を表示 & LED制御
                             emotion = data.get("emotion", "不明")
                             emotion_emoji = {
                                 "喜び": "😊",
@@ -141,6 +143,10 @@ async def playback_task(
                             }
                             emoji = emotion_emoji.get(emotion, "❓")
                             print(f"{emoji} [感情分析]: {emotion}")
+                            
+                            # LEDを制御
+                            if led:
+                                led.set_emotion(emotion)
                         
                         elif msg_type == "tts_done":
                             # tts_done（合成音声の終了通知）でミュート解除

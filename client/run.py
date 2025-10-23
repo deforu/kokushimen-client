@@ -7,6 +7,7 @@ from .audio_io import ToneGeneratorSource, AlsaaudioSource, SoundDeviceSource
 from .player import NullPlayer, SoundDevicePlayer, JitteredOutput
 from . import ws_client
 from .mute import MuteController
+from .emotion_led import EmotionLED
 
 
 # .envファイルから環境変数を読み込む
@@ -89,6 +90,9 @@ async def main():
     use_sounddevice = os.getenv("USE_SD", "1") == "1"  # 既定で再生有効
     mute = MuteController()
     
+    # LED制御の初期化
+    led = EmotionLED()
+    
     # 実行するタスクのリスト
     tasks = []
     # 接続先URLを動的に生成
@@ -97,40 +101,44 @@ async def main():
     ws_uri_other_sender = f"{SERVER_BASE_URL}/other?role=sender"
 
     # メインの処理（再生デバイスの有無で分岐）
-    if use_sounddevice:
-        out_dev = os.getenv("SD_OUTPUT_DEVICE") or os.getenv("SD_INPUT_DEVICE_SELF")
-        try:
-            async with SoundDevicePlayer(device=out_dev) as player:
-                jot = JitteredOutput(player._stream.write)
-                async with jot:
-                    async def on_pcm_chunk(chunk: bytes):
-                        await jot.on_chunk(chunk)
+    try:
+        if use_sounddevice:
+            out_dev = os.getenv("SD_OUTPUT_DEVICE") or os.getenv("SD_INPUT_DEVICE_SELF")
+            try:
+                async with SoundDevicePlayer(device=out_dev) as player:
+                    jot = JitteredOutput(player._stream.write)
+                    async with jot:
+                        async def on_pcm_chunk(chunk: bytes):
+                            await jot.on_chunk(chunk)
 
-                    # タスクを定義
-                    tasks.append(ws_client.sender_task(ws_uri_self_sender, AUTH_TOKEN, "self", frames_self, mute=mute))
-                    tasks.append(ws_client.playback_task(ws_uri_self_playback, AUTH_TOKEN, on_pcm_chunk, mute=mute))
-                    # 2つ目のマイクが有効なら送信タスクを追加
-                    if (input_backend == "sounddevice" and sd_other) or input_backend != "sounddevice":
-                        tasks.append(ws_client.sender_task(ws_uri_other_sender, AUTH_TOKEN, "other", frames_other, mute=mute))
-                    
-                    await asyncio.gather(*tasks)
-        except Exception as e:
-            print(f"[client] sounddevice 出力を初期化できませんでした（{e}）。NullPlayer にフォールバックします。")
-            use_sounddevice = False # Set flag to false and drop into the 'else' block below.
-    
-    if not use_sounddevice: # This block will now be used for both default and fallback cases.
-        player = NullPlayer()
-        async def on_pcm_chunk(chunk: bytes):
-            await player.play(chunk)
+                        # タスクを定義
+                        tasks.append(ws_client.sender_task(ws_uri_self_sender, AUTH_TOKEN, "self", frames_self, mute=mute))
+                        tasks.append(ws_client.playback_task(ws_uri_self_playback, AUTH_TOKEN, on_pcm_chunk, mute=mute, led=led))
+                        # 2つ目のマイクが有効なら送信タスクを追加
+                        if (input_backend == "sounddevice" and sd_other) or input_backend != "sounddevice":
+                            tasks.append(ws_client.sender_task(ws_uri_other_sender, AUTH_TOKEN, "other", frames_other, mute=mute))
+                        
+                        await asyncio.gather(*tasks)
+            except Exception as e:
+                print(f"[client] sounddevice 出力を初期化できませんでした（{e}）。NullPlayer にフォールバックします。")
+                use_sounddevice = False # Set flag to false and drop into the 'else' block below.
+        
+        if not use_sounddevice: # This block will now be used for both default and fallback cases.
+            player = NullPlayer()
+            async def on_pcm_chunk(chunk: bytes):
+                await player.play(chunk)
 
-        # タスクを定義
-        tasks.append(ws_client.sender_task(ws_uri_self_sender, AUTH_TOKEN, "self", frames_self, mute=mute))
-        tasks.append(ws_client.playback_task(ws_uri_self_playback, AUTH_TOKEN, on_pcm_chunk, mute=mute))
-        # 2つ目のマイクが有効なら送信タスクを追加
-        if (input_backend == "sounddevice" and sd_other) or input_backend != "sounddevice":
-            tasks.append(ws_client.sender_task(ws_uri_other_sender, AUTH_TOKEN, "other", frames_other, mute=mute))
+            # タスクを定義
+            tasks.append(ws_client.sender_task(ws_uri_self_sender, AUTH_TOKEN, "self", frames_self, mute=mute))
+            tasks.append(ws_client.playback_task(ws_uri_self_playback, AUTH_TOKEN, on_pcm_chunk, mute=mute, led=led))
+            # 2つ目のマイクが有効なら送信タスクを追加
+            if (input_backend == "sounddevice" and sd_other) or input_backend != "sounddevice":
+                tasks.append(ws_client.sender_task(ws_uri_other_sender, AUTH_TOKEN, "other", frames_other, mute=mute))
 
-        await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks)
+    finally:
+        # 終了時にLEDをクリーンアップ
+        led.cleanup()
 
 
 if __name__ == "__main__":
