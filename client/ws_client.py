@@ -130,6 +130,18 @@ async def playback_task(
                             ai_text = data.get("text", "(テキストなし)")
                             print(f"\n💬 [Gemini 応答]: {ai_text}\n")
                         
+                        elif msg_type == "emotion":
+                            # ★NEW: 感情分析結果を表示
+                            emotion = data.get("emotion", "不明")
+                            emotion_emoji = {
+                                "喜び": "😊",
+                                "怒り": "😠",
+                                "悲しみ": "😢",
+                                "平常": "😐"
+                            }
+                            emoji = emotion_emoji.get(emotion, "❓")
+                            print(f"{emoji} [感情分析]: {emotion}")
+                        
                         elif msg_type == "tts_done":
                             # tts_done（合成音声の終了通知）でミュート解除
                             if mute:
