@@ -30,14 +30,20 @@ class EmotionLED:
             enabled: LED制御を有効にするか（環境変数 USE_LED でも制御可能）
         """
         self.enabled = enabled and GPIO_AVAILABLE
-        self.enabled = self.enabled and os.getenv("USE_LED", "1") == "1"
+        # デフォルトは無効（"1"を設定した場合のみ有効）
+        self.enabled = self.enabled and os.getenv("USE_LED", "0") == "1"
         self.current_pin: Optional[int] = None
         
         if self.enabled:
-            self._setup_gpio()
-            print("✅ 感情LED制御を初期化しました")
-            for emotion, pin in self.EMOTION_PINS.items():
-                print(f"   {emotion}: GPIO {pin}")
+            try:
+                self._setup_gpio()
+                print("✅ 感情LED制御を初期化しました")
+                for emotion, pin in self.EMOTION_PINS.items():
+                    print(f"   {emotion}: GPIO {pin}")
+            except Exception as e:
+                print(f"⚠️  GPIO初期化に失敗しました: {e}")
+                print(f"    LED制御を無効化します")
+                self.enabled = False
         else:
             print("ℹ️  感情LED制御は無効です")
     
