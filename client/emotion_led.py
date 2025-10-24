@@ -1,35 +1,41 @@
 """
 感情に応じたLED制御モジュール
+Raspberry Pi 5対応版（gpiozero使用）
 """
 import os
 from typing import Optional
 
-# ラズパイ環境でのみRPi.GPIOをインポート
+# Raspberry Pi 5対応: gpiozeroを使用
 try:
-    import RPi.GPIO as GPIO
+    from gpiozero import LED as GPIO_LED
+    from gpiozero import RGBLED
     GPIO_AVAILABLE = True
-except (ImportError, RuntimeError):
+    print("✅ gpiozero を使用してGPIO制御を初期化します（Raspberry Pi 5対応）")
+except ImportError:
     GPIO_AVAILABLE = False
-    print("⚠️  RPi.GPIOが利用できません。LED制御は無効化されています。")
+    print("⚠️  gpiozeroが利用できません。LED制御は無効化されています。")
+    print("    インストール: pip install gpiozero lgpio")
 
 
 class EmotionLED:
-    """感情に応じてLEDを制御するクラス（RGB LED対応）"""
+    """感情に応じてLEDを制御するクラス（RGB LED対応・Raspberry Pi 5対応）"""
     
     # RGB LEDの各色ピン
     PIN_RED = int(os.getenv("LED_PIN_RED", "17"))
     PIN_GREEN = int(os.getenv("LED_PIN_GREEN", "27"))
     PIN_BLUE = int(os.getenv("LED_PIN_BLUE", "22"))
     
-    # 共通ピンのタイプ（common_anode=True or common_cathode=False）
+    # 共通ピンのタイプ（共通アノード=True、共通カソード=False）
     IS_COMMON_ANODE = os.getenv("LED_COMMON_ANODE", "1") == "1"
     
-    # 感情とRGB値のマッピング (0=OFF, 1=ON)
+    # 感情とRGB値のマッピング (0.0=OFF, 1.0=ON)
     EMOTION_COLORS = {
-        "喜び": (0, 1, 0),    # 緑
-        "怒り": (1, 0, 0),    # 赤
-        "悲しみ": (0, 0, 1),  # 青
-        "平常": (1, 1, 1)     # 白（全色点灯）
+        "喜び": (0.0, 1.0, 0.0),    # 緑
+        "怒り": (1.0, 0.0, 0.0),    # 赤
+        "悲しみ": (0.0, 0.0, 1.0),  # 青
+        "平常": (1.0, 1.0, 1.0),    # 白（全色点灯）
+        "驚き": (1.0, 0.5, 0.0),    # オレンジ
+        "恐れ": (0.5, 0.0, 0.5),    # 紫
     }
     
     def __init__(self, enabled: bool = True):
@@ -40,7 +46,7 @@ class EmotionLED:
         self.enabled = enabled and GPIO_AVAILABLE
         # デフォルトは無効（"1"を設定した場合のみ有効）
         self.enabled = self.enabled and os.getenv("USE_LED", "0") == "1"
-        self.current_pin: Optional[int] = None
+        self.rgb_led: Optional[RGBLED] = None
         
         if self.enabled:
             try:
@@ -55,74 +61,63 @@ class EmotionLED:
                 print(f"    LED制御を無効化します")
                 self.enabled = False
         else:
-            print("ℹ️  感情LED制御は無効です")
+            print("ℹ️  感情LED制御は無効です（有効にするには: export USE_LED=1）")
     
     def _setup_gpio(self):
-        """GPIOの初期設定（RGB LED用）"""
+        """GPIOの初期設定（RGB LED用・gpiozero使用）"""
         if not self.enabled:
             return
         
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
+        # RGBLEDオブジェクトを作成
+        # active_high: 共通カソードならTrue、共通アノードならFalse
+        self.rgb_led = RGBLED(
+            red=self.PIN_RED,
+            green=self.PIN_GREEN,
+            blue=self.PIN_BLUE,
+            active_high=not self.IS_COMMON_ANODE  # 共通アノードの場合は反転
+        )
         
-        # RGB各ピンを出力モードに設定
-        for pin in [self.PIN_RED, self.PIN_GREEN, self.PIN_BLUE]:
-            GPIO.setup(pin, GPIO.OUT)
-            # 共通アノードの場合、HIGHでOFF（反転ロジック）
-            initial_state = GPIO.HIGH if self.IS_COMMON_ANODE else GPIO.LOW
-            GPIO.output(pin, initial_state)
+        # 初期状態: 消灯
+        self.rgb_led.off()
     
     def set_emotion(self, emotion: str):
         """
         感情に応じてRGB LEDの色を制御
         
         Args:
-            emotion: 感情（喜び、怒り、悲しみ、平常）
+            emotion: 感情（喜び、怒り、悲しみ、平常、驚き、恐れ）
         """
-        if not self.enabled:
+        if not self.enabled or self.rgb_led is None:
             return
         
         # 感情に対応するRGB色を取得
         if emotion in self.EMOTION_COLORS:
             r, g, b = self.EMOTION_COLORS[emotion]
             
-            # 共通アノードの場合は論理を反転（HIGH=OFF, LOW=ON）
-            if self.IS_COMMON_ANODE:
-                r, g, b = not r, not g, not b
+            # RGBLEDの色を設定（0.0～1.0の値）
+            self.rgb_led.color = (r, g, b)
             
-            # RGB各ピンに出力
-            GPIO.output(self.PIN_RED, GPIO.HIGH if r else GPIO.LOW)
-            GPIO.output(self.PIN_GREEN, GPIO.HIGH if g else GPIO.LOW)
-            GPIO.output(self.PIN_BLUE, GPIO.HIGH if b else GPIO.LOW)
-            
-            self.current_pin = (r, g, b)  # RGB状態を記録
-            print(f"💡 LED点灯: {emotion} -> RGB({r}, {g}, {b})")
+            print(f"💡 LED点灯: {emotion} -> RGB({r:.1f}, {g:.1f}, {b:.1f})")
         else:
             print(f"⚠️  未知の感情: {emotion}")
-            self.current_pin = None
+            # デフォルトは白色
+            self.rgb_led.color = (1.0, 1.0, 1.0)
     
     def clear(self):
         """RGB LEDを消灯（すべての色をOFF）"""
-        if not self.enabled:
+        if not self.enabled or self.rgb_led is None:
             return
         
-        # 共通アノードの場合、HIGH=OFF / 共通カソードの場合、LOW=OFF
-        off_state = GPIO.HIGH if self.IS_COMMON_ANODE else GPIO.LOW
-        
-        GPIO.output(self.PIN_RED, off_state)
-        GPIO.output(self.PIN_GREEN, off_state)
-        GPIO.output(self.PIN_BLUE, off_state)
-        
-        self.current_pin = None
+        self.rgb_led.off()
         print("💡 RGB LEDを消灯")
     
     def cleanup(self):
         """GPIO資源を解放"""
-        if not self.enabled:
+        if not self.enabled or self.rgb_led is None:
             return
         
         self.clear()
-        GPIO.cleanup()
+        self.rgb_led.close()
         print("✅ GPIO資源を解放しました")
     
     def __enter__(self):
@@ -132,3 +127,4 @@ class EmotionLED:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """コンテキストマネージャー終了時にクリーンアップ"""
         self.cleanup()
+

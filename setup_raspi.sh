@@ -31,6 +31,37 @@ if [[ ! -f "client/run.py" ]]; then
     exit 1
 fi
 
+# 0. システム時刻の確認と同期
+print_info "システム時刻を確認・同期しています..."
+print_info "現在の時刻: $(date)"
+
+# NTPサービスのインストールと有効化
+if ! command -v ntpdate &> /dev/null; then
+    print_info "NTPパッケージをインストールしています..."
+    # 一時的にapt updateを実行（時刻同期前）
+    sudo apt update --allow-releaseinfo-change || {
+        print_warning "apt updateでエラーが発生しましたが、時刻同期後に再試行します"
+    }
+    sudo apt install -y ntp ntpdate || {
+        print_warning "NTPのインストールに失敗しました。手動で時刻を確認してください"
+    }
+fi
+
+# 時刻同期の実行
+print_info "インターネットから時刻を同期しています..."
+sudo systemctl stop ntp 2>/dev/null || true
+sudo ntpdate -s time.nist.gov || sudo ntpdate -s pool.ntp.org || {
+    print_warning "自動時刻同期に失敗しました。手動で時刻を設定してください："
+    print_warning "sudo date -s 'YYYY-MM-DD HH:MM:SS'"
+    read -p "続行しますか？ [y/N]: " continue_choice
+    if [[ ! $continue_choice =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+}
+sudo systemctl start ntp 2>/dev/null || true
+
+print_success "時刻同期完了: $(date)"
+
 # 1. システム依存パッケージのインストール
 print_info "システム依存パッケージをインストールしています..."
 sudo apt update
